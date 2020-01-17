@@ -119,6 +119,10 @@ def count_edges(x):
             edge_counts[edge] += 1
     return list(sorted((count, edge) for edge, count in edge_counts.items()))
 
+def rotate_seq(t, tup, rot, rev):
+    val = -1 if rev else 1
+    return t((tup[(val * (i + rot)) % len(tup)] for i in range(len(tup))))
+
 class Node(object):
     def __init__(self, symbol, open_edges, edges):
         self.__symbol = symbol
@@ -154,6 +158,12 @@ class Node(object):
     def set_neighbor(self, idx, node):
         self.__neighbors[idx] = node
 
+    def get_neighbor(self, idx):
+        return self.__neighbors[idx]
+
+    def get_idx_neighbors(self):
+        return zip(range(len(self.__neighbors)), self.__neighbors)
+
     def get_tag(self):
         return self.__tag
 
@@ -168,36 +178,110 @@ class Node(object):
                 nodes += neighbor.visit(tag)
         return nodes
 
-node_list = sorted(set([Node(*x) for x in data]))
+    def rotate(self, tag, rotate, rev):
+        mult = -1 if rev else 1
+        ret = Node(
+            self.__symbol,
+            tuple(sorted((((i + rotate) * mult) % 6) for i
+                         in self.__open_edges)),
+            rotate_seq(tuple, self.__edges, rotate, rev))
+        ret.__neighbors = rotate_seq(list, self.__neighbors, rotate, rev)
+        ret.__tag = tag
+        return ret
 
-edge_to_nodes = {}
-for node in node_list:
-    for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
-        if null_edge(edge):
-            continue
-        if edge not in edge_to_nodes:
-            edge_to_nodes[edge] = []
-        edge_to_nodes[edge].append((idx, node))
-
-for edge, nodes in edge_to_nodes.items():
-    for idx, inode in nodes:
-        for jdx, jnode in nodes:
-            if inode is jnode:
-                continue
-            if idx != (jdx + 3) % 6:
-                print("found misaligned pair for edge {}: {}, {}".format(edge, inode, jnode))
+    def fixup_neighbors(self, neighbor_map):
+        def replace(x):
+            if x is None:
+                return x
             else:
-                inode.set_neighbor(idx, jnode)
-                inode.set_neighbor(jdx, inode)
+                return neighbor_map[id(x)]
+        self.__neighbors = list(map(replace, self.__neighbors))
 
-tag = 0
-tags = {}
-for node in node_list:
-    if node.tagged():
-        continue
-    nodes = node.visit(tag)
-    tags[tag] = (len(nodes), nodes)
-    tag += 1
 
-[print(x) for x in sorted(((num, tag, [x.symbol() for x in nodes]) for tag, (num, nodes) in tags.items()))]
+nodes = sorted(set([Node(*x) for x in data]))
 
+
+class ConnectedComponent(object):
+    def __init__(self, tag, nodes):
+        self.__tag = tag
+        self.__nodes = nodes;
+
+    def __lt__(self, other):
+        return id(self) < id(other)
+
+    def size(self):
+        return len(self.__nodes)
+
+    def nodes(self):
+        return self.__nodes
+
+    def copy(self, tag):
+        return self.rotate(tag, 0, False)
+
+    def rotate(self, tag, rotate, reverse):
+        nodemap = {}
+        new_nodes = []
+        for node in self.__nodes:
+            n = node.rotate(tag, rotate, reverse)
+            nodemap[id(node)] = n
+            new_nodes.append(n)
+        for node in new_nodes:
+            node.fixup_neighbors(nodemap)
+
+        #sanity
+        for node in new_nodes:
+            assert(id(node) not in nodemap, "new node in old nodemap")
+        for node in new_nodes:
+            for idx, neighbor in node.get_idx_neighbors():
+                if neighbor is None:
+                    continue
+                assert(neighbor.get_neighbor((idx + 3) % 6) is self,
+                       "unmatching rotated neighbor")
+        return ConnectedComponent(tag, new_nodes)
+
+
+def generate_connected_components(node_list):
+    edge_to_nodes = {}
+    for node in node_list:
+        for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
+            if null_edge(edge):
+                continue
+            if edge not in edge_to_nodes:
+                edge_to_nodes[edge] = []
+            edge_to_nodes[edge].append((idx, node))
+
+    for edge, nodes in edge_to_nodes.items():
+        for idx, inode in nodes:
+            for jdx, jnode in nodes:
+                if inode is jnode:
+                    continue
+                if idx != (jdx + 3) % 6:
+                    print("found misaligned pair for edge {}: {}, {}".format(
+                        edge, inode, jnode))
+                else:
+                    inode.set_neighbor(idx, jnode)
+                    inode.set_neighbor(jdx, inode)
+
+    tag = 0
+    tags = {}
+    for node in node_list:
+        if node.tagged():
+            continue
+        nodes = node.visit(tag)
+        tags[tag] = (len(nodes), nodes)
+        tag += 1
+    return [
+        ConnectedComponent(tag, nodes) for tag, (_, nodes) in
+        tags.items()
+        ]
+
+
+sorted_components = sorted(((x.size(), x) for x in
+                            generate_connected_components(nodes)))
+list(
+    map(
+        lambda x: print(x[0], [i.symbol() for i in x[1].nodes()]),
+        sorted_components
+        )
+    )
+print(sorted_components[-1][1].rotate(0, 3, True))
