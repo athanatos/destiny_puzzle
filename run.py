@@ -20,11 +20,34 @@ def n_to_s(x): return NAME_TO_SYMBOL.get(x)
 SYMBOLS = frozenset((a for a, b in SYMBOL_TO_NAME.items()))
 def valid_symbol(x): return x in SYMBOLS
 
-NAMES= frozenset((b for a, b in SYMBOL_TO_NAME.items()))
-def valid_name(x): return x in NAMES
+NAME_MAP = [
+    (('none', 'black'), 'blank'),
+    ((), 'cauldron'),
+    (('hex', 'hexes'), 'hexagon'),
+    (('c'), 'clover'),
+    (('p', 'pluss'), 'plus'),
+    (('sneak'), 'snake'),
+    (('d'), 'diamond'),
+]
+def validate_center(x):
+    x = x.strip()
+    for aliases, canonical in NAME_MAP:
+        if x == canonical or x in aliases:
+            return canonical
+    return None
 
 def get_open_edges(x):
-    return [int(i) for i in x.strip().split(',')]
+    if x == '' or x == "none":
+        return []
+    return [
+        int(i) for i in
+        x.strip()
+        .strip(',')
+        .replace('.', ',')
+        .replace(', ', ',')
+        .replace('side ', ',')
+        .replace(' ', ',')
+        .split(',')]
 
 EMPTY = 'bbbbbbb'
 def null_edge(x): return x == EMPTY
@@ -33,6 +56,21 @@ FILES = {
     'initial_sheet.tsv': lambda x: x,
     'dumbo.tsv': lambda x: x[1:9]
 }
+
+def validate_edge(edge):
+    if len(edge) == 7 and all(map(valid_symbol, edge)):
+        return edge
+    elif edge == '':
+        return EMPTY
+
+def validate_edges(edges):
+    if len(edges) != 6:
+        return None
+
+    ret = list(map(validate_edge, edges))
+    if not all(ret):
+        return None
+    return ret 
 
 def read_files():
     ret = []
@@ -43,24 +81,30 @@ def read_files():
                 line = [x.lower() for x in func(line)]
                 
                 if len(line) != 8:
+                    print("Rejected: {}, wrong length".format(line))
                     continue
 
                 center, open_sides = line[:2]
                 edges = line[2:]
 
-                if not valid_name(center):
+                validated_center = validate_center(center)
+                if not validated_center:
+                    print("Rejected: {}, invalid center {}".format(line, center))
                     continue
 
                 open_sides_decoded = None
                 try:
                     open_sides_decoded = get_open_edges(open_sides)
                 except:
+                    print("Rejected: {}, invalid open sides {}".format(line, open_sides))
                     continue
 
-                if not all((len(x) == 7 and all(map(valid_symbol, x)) for x in edges)):
+                validated_edges = validate_edges(edges)
+                if not validated_edges:
+                    print("Rejected: {}, invalid edges {}".format(line, edges))
                     continue
             
-                ret.append((center, open_sides_decoded, edges))
+                ret.append((validated_center, open_sides_decoded, validated_edges))
     return ret
 
 data = read_files()
