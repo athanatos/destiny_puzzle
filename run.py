@@ -6,7 +6,7 @@ import enum
 SYMBOL_TO_NAME = {
     'b' : 'blank',
     't' : 'cauldron',
-    'h' : 'hexes',
+    'h' : 'hexagon',
     'c' : 'clover',
     'p' : 'plus',
     's' : 'snake',
@@ -29,35 +29,41 @@ def get_open_edges(x):
 EMPTY = 'bbbbbbb'
 def null_edge(x): return x == EMPTY
 
-def read_file(filename):
+FILES = {
+    'initial_sheet.tsv': lambda x: x,
+    'dumbo.tsv': lambda x: x[1:9]
+}
+
+def read_files():
     ret = []
-    with open(filename) as tsvfile:
-        tsvreader = csv.reader(tsvfile, delimiter='\t')
-        for line in tsvreader:
-            line = [x.lower() for x in line]
+    for f, func in FILES.items():
+        with open(f) as tsvfile:
+            tsvreader = csv.reader(tsvfile, delimiter='\t')
+            for line in tsvreader:
+                line = [x.lower() for x in func(line)]
+                
+                if len(line) != 8:
+                    continue
 
-            if len(line) != 8:
-                continue
+                center, open_sides = line[:2]
+                edges = line[2:]
 
-            center, open_sides = line[:2]
-            edges = line[2:]
+                if not valid_name(center):
+                    continue
 
-            if not valid_name(center):
-                continue
+                open_sides_decoded = None
+                try:
+                    open_sides_decoded = get_open_edges(open_sides)
+                except:
+                    continue
 
-            open_sides_decoded = None
-            try:
-                open_sides_decoded = get_open_edges(open_sides)
-            except:
-                continue
-
-            if not all((len(x) == 7 and all(map(valid_symbol, x)) for x in edges)):
-                continue
+                if not all((len(x) == 7 and all(map(valid_symbol, x)) for x in edges)):
+                    continue
             
-            ret.append((center, open_sides_decoded, edges))
+                ret.append((center, open_sides_decoded, edges))
     return ret
 
-data = read_file('initial_sheet.tsv')
+data = read_files()
 
 def count_edges(x):
     edge_counts = {}
@@ -72,10 +78,24 @@ def count_edges(x):
 class Node(object):
     def __init__(self, symbol, open_edges, edges):
         self.__symbol = symbol
-        self.__open_edges = open_edges
-        self.__edges = edges
+        self.__open_edges = tuple(open_edges)
+        self.__edges = tuple(edges)
         self.__neighbors = [None for x in self.__edges]
         self.__tag = None
+
+    def __eq__(self, other):
+        return (self.__symbol == other.__symbol and
+                self.__open_edges == other.__open_edges and
+                self.__edges == other.__edges)
+
+    def __lt__(self, other):
+        return (
+            (self.__symbol, self.__open_edges, self.__edges) < 
+            (other.__symbol, other.__open_edges, other.__edges)
+            )
+            
+    def __hash__(self):
+        return (self.__symbol, self.__open_edges, self.__edges).__hash__()
 
     def __repr__(self):
         return "Node(symbol={}, open_edges={}, edges={}".format(
@@ -87,16 +107,8 @@ class Node(object):
     def get_edges(self):
         return self.__edges
 
-    def set_neighbors(self, edge_to_nodes):
-        for idx, edge in zip(range(len(self.__edges)), self.__edges):
-            if null_edge(edge):
-                continue
-            nodes = edge_to_nodes[edge]
-            if len(nodes) > 2:
-                print("{} has 3 nodes: {}", edge, nodes)
-            for node in nodes:
-                if node is not self:
-                    self.__neighbors[idx] = node
+    def set_neighbor(self, idx, node):
+        self.__neighbors[idx] = node
 
     def get_tag(self):
         return self.__tag
@@ -112,23 +124,31 @@ class Node(object):
                 nodes += neighbor.visit(tag)
         return nodes
 
-
-nodes = [Node(*x) for x in data]
+node_list = sorted(set([Node(*x) for x in data]))
 
 edge_to_nodes = {}
-for node in nodes:
-    for edge in node.get_edges():
+for node in node_list:
+    for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
         if null_edge(edge):
             continue
         if edge not in edge_to_nodes:
             edge_to_nodes[edge] = []
-        edge_to_nodes[edge].append(node)
+        edge_to_nodes[edge].append((idx, node))
 
-[x.set_neighbors(edge_to_nodes) for x in nodes]
+for edge, nodes in edge_to_nodes.items():
+    for idx, inode in nodes:
+        for jdx, jnode in nodes:
+            if inode is jnode:
+                continue
+            if idx != (jdx + 3) % 6:
+                print("found misaligned pair for edge {}: {}, {}".format(edge, inode, jnode))
+            else:
+                inode.set_neighbor(idx, jnode)
+                inode.set_neighbor(jdx, inode)
 
 tag = 0
 tags = {}
-for node in nodes:
+for node in node_list:
     if node.tagged():
         continue
     nodes = node.visit(tag)
