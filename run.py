@@ -53,8 +53,9 @@ EMPTY = 'bbbbbbb'
 def null_edge(x): return x == EMPTY
 
 FILES = {
-    'initial_sheet.tsv': lambda x: x,
-    'dumbo.tsv': lambda x: x[1:9]
+#    'initial_sheet.tsv': lambda x: x,
+#    'dumbo.tsv': lambda x: x[1:9]
+    '2020-01-18.tsv': lambda x: x[1:9]
 }
 
 def validate_edge(edge):
@@ -284,4 +285,3 @@ list(
         sorted_components
         )
     )
-print(sorted_components[-1][1].rotate(0, 3, True))
