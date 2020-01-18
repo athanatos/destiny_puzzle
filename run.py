@@ -59,6 +59,7 @@ FILES = {
 }
 
 def validate_edge(edge):
+    edge = edge.strip()
     if len(edge) == 7 and all(map(valid_symbol, edge)):
         return edge
     elif edge == '':
@@ -165,6 +166,15 @@ class Node(object):
     def get_idx_neighbors(self):
         return zip(range(len(self.__neighbors)), self.__neighbors)
 
+    def replace(self, other):
+        for idx, neighbor in self.get_idx_neighbors():
+            if neighbor is not None:
+                assert neighbor.get_neighbor((idx + 3) % 6) == self
+                neighbor.set_neighbor((idx + 3) % 6, other)
+                if other.get_neighbor(idx) is None:
+                    other.set_neighbor(idx, other)
+                self.set_neighbor(idx, None)
+
     def get_tag(self):
         return self.__tag
 
@@ -197,6 +207,13 @@ class Node(object):
             else:
                 return neighbor_map[id(x)]
         self.__neighbors = list(map(replace, self.__neighbors))
+
+    def get_unpaired_edges(self):
+        return list(map(lambda x: x[:2],
+            filter(lambda idx, edge, neighbor: neighbor is None,
+                   zip(range(len(self.__edges)), self.__edges, self.__neighbors)
+            )))
+                   
 
 
 nodes = sorted(set([Node(*x) for x in data]))
@@ -231,15 +248,57 @@ class ConnectedComponent(object):
 
         #sanity
         for node in new_nodes:
-            assert(id(node) not in nodemap, "new node in old nodemap")
+            assert id(node) not in nodemap
         for node in new_nodes:
             for idx, neighbor in node.get_idx_neighbors():
                 if neighbor is None:
                     continue
-                assert(neighbor.get_neighbor((idx + 3) % 6) is self,
-                       "unmatching rotated neighbor")
+                assert neighbor.get_neighbor((idx + 3) % 6) is self
         return ConnectedComponent(tag, new_nodes)
 
+    def get_exterior_edges(self):
+        ret = {}
+        for node in self.__nodes:
+            for idx, edge in node.get_unpaired_edges():
+                ret[edge] = (node, idx)
+
+    def merge(self, other):
+        merged = False
+        extedges = self.get_exterior_edges()
+        oextedges = other.get_exterior_edges()
+        
+        matches = []
+        for node in self.__nodes:
+            for onode in other.__nodes:
+                if node == onode:
+                    matches.append((node, onode))
+
+        if len(matches) > 0:
+            merged = True
+        
+        deduped = frozenset((id(x) for tup in matches for x in tup))
+        for node, onode in matches:
+            onode.replace(node)
+
+        for edge, (node, idx) in extedges.items():
+            if id(node) in removed:
+                continue
+            for oedge, (onode, oidx) in oextedges.items():
+                if id(onode) in removed:
+                    continue
+            if edge == oedge:
+                if idx != ((oidx + 3) % 6):
+                    print("Found unmatched pair in merge: {} {} {} {}".format(
+                        edge, node, oedge, onode))
+                node.set_neighbor(idx, onode)
+                onode.set_neighbor(oidx, node)
+                merged = True
+
+        if merge:
+            other.__nodes = []
+            return True
+        else:
+            return False
 
 def generate_connected_components(node_list):
     edge_to_nodes = {}
@@ -276,12 +335,31 @@ def generate_connected_components(node_list):
         tags.items()
         ]
 
+def try_rotate_merge_ccs(ccs):
+    def try_merge(cc, ccs):
+        for rotation in (cc.rotate(0, i, j) for i in range(1, 6) for j in [False, True]):
+            for occ in ccs:
+                if occ.merge(rotation):
+                    return True
+        return False
+        
+    unmatched = []
+    while (len(ccs)):
+        cc = ccs[0]
+        ccs = ccs[1:]
+        if not try_merge(cc, ccs):
+            unmatched.append(cc)
+    return unmatched
 
-sorted_components = sorted(((x.size(), x) for x in
-                            generate_connected_components(nodes)))
-list(
-    map(
-        lambda x: print(x[0], [i.symbol() for i in x[1].nodes()]),
-        sorted_components
-        )
-    )
+def by_size(components):
+    return sorted(((x.size(), x) for x in
+                   generate_connected_components(nodes)))
+
+def print_top_n(bs, n):
+    list(map(print, [(x[0], [i.symbol() for i in x[1].nodes()]) for x in bs][-1 * n:]))
+
+ccs = generate_connected_components(nodes)
+print_top_n(by_size(ccs), 5)
+
+ccs = try_rotate_merge_ccs(ccs)
+print_top_n(by_size(ccs), 5)
