@@ -158,9 +158,13 @@ class Node(object):
     def __hash__(self):
         return (self.__symbol, self.__open_edges, self.__edges).__hash__()
 
+    def get_checksum(self):
+        return ''.join(self.__edges).upper()
+
     def __repr__(self):
-        return "Node(symbol={}, open_edges={}, edges={}".format(
-            self.__symbol, self.__open_edges, self.__edges)
+        #return "Node(symbol={}, open_edges={}, edges={}".format(
+        #    self.__symbol, self.__open_edges, self.__edges)
+        return self.get_checksum()
 
     def symbol(self):
         return self.__symbol
@@ -270,18 +274,20 @@ class ConnectedComponent(object):
         to_visit = [self.__nodes[0]]
         coords_to_node = {(0,0): to_visit[0]}
         node_to_coords = {id(to_visit[0]): (0,0) }
-        minx = 1000000000
-        miny = 1000000000
-        maxx = -1000000000
-        maxy = -1000000000
+        minx = 0
+        miny = 0
+        maxx = 0
+        maxy = 0
         missing_edges = []
         while len(to_visit):
             next = to_visit.pop()
             coords = node_to_coords[id(next)]
             for idx, neighbor in next.get_idx_neighbors():
-                if id(neighbor) in node_to_coords:
-                    continue
                 ncoords = add(cube[idx], coords)
+                if id(neighbor) in node_to_coords:
+                    if node_to_coords[id(neighbor)] != ncoords:
+                        print(node_to_coords[id(neighbor)], ncoords)
+                    continue
                 coords_to_node[ncoords] = neighbor
                 node_to_coords[id(neighbor)] = ncoords
                 to_visit.append(neighbor)
@@ -334,7 +340,7 @@ class ConnectedComponent(object):
         while (len(heap)):
             checked += 1
             cost, next = heapq.heappop(heap)
-            print("pulling", next)
+            #print("pulling", next)
             for idx, node in next.get_valid_neighbors():
                 if id(node) in costs:
                     continue
@@ -467,25 +473,29 @@ class ConnectedComponent(object):
 def generate_connected_components(node_list):
     edge_to_nodes = {}
     for lnode in node_list:
-        skip = False
+        #skip = False
+        #for idx, edge in lnode.get_idx_edges():
+        #    cls = (idx % 3, edge)
+        #    if cls not in edge_to_nodes:
+        #        edge_to_nodes[cls] = []
+        #    for jdx, onode in edge_to_nodes[cls]:
+        #        if idx != (jdx + 3) % 6:
+        #            print("Skipping node {}, non-matching edge {}".format(onode, edge))
+        #            skip = True
+        #    
+        #if skip:
+        #    continue
         for idx, edge in lnode.get_idx_edges():
             cls = (idx % 3, edge)
             if cls not in edge_to_nodes:
                 edge_to_nodes[cls] = []
-            for jdx, onode in edge_to_nodes[cls]:
-                if idx != (jdx + 3) % 6:
-                    print("Skipping node {}, non-matching edge {}".format(onode, edge))
-                    skip = True
-            
-        if skip:
-            continue
-        for idx, edge in lnode.get_idx_edges():
-            cls = (idx % 3, edge)
             edge_to_nodes[cls].append((idx, lnode))
-            assert len(edge_to_nodes[cls]) < 3
+        #    assert len(edge_to_nodes[cls]) < 3
 
     for (cls, edge), nodes in edge_to_nodes.items():
-        assert len(nodes) <= 2
+        if len(nodes) > 2:
+            print("edge {} too many nodes {}".format(edge, nodes))
+            continue
         for idx, inode in nodes:
             for jdx, jnode in nodes:
                 if id(inode) <= id(jnode):

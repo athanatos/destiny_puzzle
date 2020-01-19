@@ -12,5 +12,9 @@ tree = html.fromstring(page.content)
 with open('raid_secrets.tsv', 'w') as f:
     tsvwriter = csv.writer(f, delimiter='\t')
     for row in tree.xpath('//tr'):
-        tsvwriter.writerow(row.xpath('td/text()'))
+        ret = row.xpath('td/text()')
+        if len(ret) < 2:
+            continue
+        if 'http' in ret[0]: ret = ret[1:]
+        tsvwriter.writerow(ret)
     
