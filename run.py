@@ -267,37 +267,68 @@ class ConnectedComponent(object):
         self.__fake = []
         self.sanity()
 
-    def fill(self):
+    def generate_coords(self, exclude_list):
+        print("generate_coords {}".format(exclude_list))
         def add(x, y):
             return tuple(map(sum, zip(x, y)))
+        def sub(x, y):
+            return tuple(map(lambda x: x[0] - x[1], zip(x, y)))
         cube = [(1, 1), (2, 0), (1, -1), (-1, -1), (-2, 0), (-1, 1)]
-        to_visit = [self.__nodes[0]]
-        coords_to_node = {(0,0): to_visit[0]}
-        node_to_coords = {id(to_visit[0]): (0,0) }
-        minx = 0
-        miny = 0
-        maxx = 0
-        maxy = 0
+        to_visit = [(0, self.__nodes[0])]
+        coords_to_node = {(0,0): self.__nodes[0]}
+        node_to_coords = {id(self.__nodes[0]): (0,0) }
+        inconsistencies = 0
         missing_edges = []
+        offsets = {}
         while len(to_visit):
-            next = to_visit.pop()
+            _, next = heapq.heappop(to_visit)
             coords = node_to_coords[id(next)]
             for idx, neighbor in next.get_idx_neighbors():
                 ncoords = add(cube[idx], coords)
                 if id(neighbor) in node_to_coords:
                     if node_to_coords[id(neighbor)] != ncoords:
-                        print(node_to_coords[id(neighbor)], ncoords)
+                        offset = sub(ncoords, node_to_coords[id(neighbor)])
+                        if offset not in offsets:
+                            offsets[offset] = 0
+                        offsets[offset] += 1
+                        inconsistencies += 1
                     continue
                 coords_to_node[ncoords] = neighbor
                 node_to_coords[id(neighbor)] = ncoords
-                to_visit.append(neighbor)
-                minx = min(minx, ncoords[0])
-                maxx = max(maxx, ncoords[0])
-                miny = min(miny, ncoords[1])
-                maxy = max(maxy, ncoords[1])
-            for idx, edge in next.get_missing_edges():
-                assert next.get_neighbor(idx) is None
+                if tuple(sorted([id(next), id(neighbor)])) in exclude_list:
+                    heapq.heappush(to_visit, (1, neighbor))
+                else:
+                    heapq.heappush(to_visit, (0, neighbor))
+        print(inconsistencies, offsets)
+        return inconsistencies, id(coords_to_node), coords_to_node, node_to_coords
+
+    def edge_list(self):
+        ret = []
+        for node in self.__nodes:
+            for _, neighbor in node.get_idx_neighbors():
+                if id(node) < id(neighbor):
+                    ret.append((id(node), id(neighbor)))
+        return ret
+
+    def fill(self):
+        def add(x, y):
+            return tuple(map(sum, zip(x, y)))
+        cube = [(1, 1), (2, 0), (1, -1), (-1, -1), (-2, 0), (-1, 1)]
+
+        edge_list = self.edge_list()
+        print(len(edge_list))
+        x = sorted([self.generate_coords([x]) for x in edge_list])
+        inconsistencies, _, coords_to_node, node_to_coords
+        assert inconsistencies == 0
+
+        for node in self.__nodes:
+            for idx, edge in node.get_missing_edges():
                 missing_edges.append(add(cube[idx], coords))
+
+        minx = min((x[0][0] for x in coords_to_node.items()))
+        maxx = max((x[0][0] for x in coords_to_node.items()))
+        miny = min((x[0][1] for x in coords_to_node.items()))
+        maxy = max((x[0][1] for x in coords_to_node.items()))
 
         print(minx, maxx, miny, maxy)
         while len(missing_edges):
