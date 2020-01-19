@@ -112,8 +112,6 @@ def read_files():
                 ret.append((validated_center, open_sides_decoded, validated_edges))
     return ret
 
-data = read_files()
-
 def count_edges(x):
     edge_counts = {}
     for _, _, edges in x:
@@ -160,6 +158,9 @@ class Node(object):
     def get_edges(self):
         return self.__edges
 
+    def get_idx_edges(self):
+        return filter(lambda x: not null_edge(x[1]), zip(range(len(self.__edges)), self.__edges))
+
     def set_neighbor(self, idx, node):
         self.__neighbors[idx] = node
 
@@ -167,16 +168,15 @@ class Node(object):
         return self.__neighbors[idx]
 
     def get_idx_neighbors(self):
-        return zip(range(len(self.__neighbors)), self.__neighbors)
+        return filter(lambda x: x[1] is not None, zip(range(len(self.__neighbors)), self.__neighbors))
 
     def replace(self, other):
         for idx, neighbor in self.get_idx_neighbors():
-            if neighbor is not None:
-                assert neighbor.get_neighbor((idx + 3) % 6) == self
-                neighbor.set_neighbor((idx + 3) % 6, other)
-                if other.get_neighbor(idx) is None:
-                    other.set_neighbor(idx, other)
-                self.set_neighbor(idx, None)
+            assert neighbor.get_neighbor((idx + 3) % 6) == self
+            neighbor.set_neighbor((idx + 3) % 6, other)
+            if other.get_neighbor(idx) is None:
+                other.set_neighbor(idx, other)
+            self.set_neighbor(idx, None)
 
     def get_tag(self):
         return self.__tag
@@ -219,9 +219,6 @@ class Node(object):
                    
 
 
-nodes = sorted(set([Node(*x) for x in data]))
-
-
 class ConnectedComponent(object):
     def __init__(self, tag, nodes):
         self.__tag = tag
@@ -243,8 +240,6 @@ class ConnectedComponent(object):
     def sanity(self):
         for node in self.__nodes:
             for idx, neighbor in node.get_idx_neighbors():
-                if neighbor is None:
-                    continue
                 if neighbor.get_neighbor((idx + 3) % 6) is not node:
                     print(neighbor, node, neighbor.get_neighbor((idx + 3) % 6), id(node), id(neighbor), id(neighbor.get_neighbor((idx + 3) % 6)))
                     assert False
@@ -310,36 +305,34 @@ class ConnectedComponent(object):
 
 def generate_connected_components(node_list):
     edge_to_nodes = {}
-    for node in node_list:
+    for lnode in node_list:
         skip = False
-        for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
-            for jdx, node in edge_to_nodes.get(edge, []):
+        for idx, edge in lnode.get_idx_edges():
+            cls = (idx % 3, edge)
+            if cls not in edge_to_nodes:
+                edge_to_nodes[cls] = []
+            for jdx, onode in edge_to_nodes[cls]:
                 if idx != (jdx + 3) % 6:
-                    print("Skipping node {}, duplicate edge {}".format(node, edge))
+                    print("Skipping node {}, non-matching edge {}".format(onode, edge))
                     skip = True
             
         if skip:
             continue
-        print("Adding node", node)
-        for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
-            if null_edge(edge):
-                continue
-            if edge not in edge_to_nodes:
-                edge_to_nodes[edge] = []
-            edge_to_nodes[edge].append((idx, node))
+        for idx, edge in lnode.get_idx_edges():
+            cls = (idx % 3, edge)
+            edge_to_nodes[cls].append((idx, lnode))
+            assert len(edge_to_nodes[cls]) < 3
 
-    for edge, nodes in edge_to_nodes.items():
-        print(edge, nodes)
-        assert len(nodes) == 2
+    for (cls, edge), nodes in edge_to_nodes.items():
+        assert len(nodes) <= 2
         for idx, inode in nodes:
             for jdx, jnode in nodes:
-                if inode is jnode:
+                if id(inode) <= id(jnode):
                     continue
                 if idx != (jdx + 3) % 6:
                     print("found misaligned pair for edge {}: {}, {}".format(
                         edge, inode, jnode))
                 else:
-                    print("Linking {} and {}".format(inode, jnode))
                     assert inode.get_neighbor(idx) is None
                     assert jnode.get_neighbor(jdx) is None
                     inode.set_neighbor(idx, jnode)
@@ -375,14 +368,17 @@ def try_rotate_merge_ccs(ccs):
     return unmatched
 
 def by_size(components):
-    return sorted(((x.size(), x) for x in
-                   generate_connected_components(nodes)))
+    return sorted(((x.size(), x) for x in components))
 
 def print_top_n(bs, n):
-    list(map(print, [(x[0], [i.symbol() for i in x[1].nodes()]) for x in bs][-1 * n:]))
+    list(map(print, bs))#[(x[0], [i.symbol() for i in x[1].nodes()]) for x in bs][-1 * n:]))
+
+data = read_files()
+
+nodes = sorted(set([Node(*x) for x in data]))
 
 ccs = generate_connected_components(nodes)
 print_top_n(by_size(ccs), 5)
 
-ccs = try_rotate_merge_ccs(ccs)
-print_top_n(by_size(ccs), 5)
+#ccs = try_rotate_merge_ccs(ccs)
+#print_top_n(by_size(ccs), 5)
