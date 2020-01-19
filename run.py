@@ -58,7 +58,8 @@ def null_edge(x): return x == EMPTY
 FILES = {
 #    'initial_sheet.tsv': lambda x: x,
 #    'dumbo.tsv': lambda x: x[1:9]
-    '2020-01-18.tsv': lambda x: x[1:9]
+    '2020-01-18.tsv': lambda x: x[1:9],
+    '2020-01-18-2.tsv': lambda x: x[1:9],
 }
 
 def validate_edge(edge):
