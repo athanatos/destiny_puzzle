@@ -233,38 +233,120 @@ class Node(object):
     def get_ext_edges(self):
         return list(filter(lambda idx: null_edge(self.__edges[idx]), self.get_open_idx()))
 
+    def get_missing_edges(self):
+        return list(filter(lambda x: self.__neighbors[x[0]] is None,
+                           self.get_idx_edges()))
+
     def get_valid_neighbors(self):
         return list(filter(
             lambda x: x[0] in self.__open_edges,
             self.get_idx_neighbors()))
 
     def has_symbol(self):
-        return self.symbol() != 'blank'
+        return self.symbol() != 'blank' and not is_fake()
+
+    def is_fake(self):
+        return self.symbol() == 'fake'
+
+    def cost(self):
+        return 10000 if self.is_fake() else 1
+
+    def clear_open_edge(self, edge):
+        assert(self.is_fake())
+        self.__open_edges = tuple(filter(lambda x: x != edge, self.__open_edges))
 
 
 class ConnectedComponent(object):
     def __init__(self, tag, nodes):
         self.__tag = tag
-        self.__nodes = nodes;
+        self.__nodes = nodes
+        self.__fake = []
         self.sanity()
+
+    def fill(self):
+        def add(x, y):
+            return tuple(map(sum, zip(x, y)))
+        cube = [(1, 1), (2, 0), (1, -1), (-1, -1), (-2, 0), (-1, 1)]
+        to_visit = [self.__nodes[0]]
+        coords_to_node = {(0,0): to_visit[0]}
+        node_to_coords = {id(to_visit[0]): (0,0) }
+        minx = 1000000000
+        miny = 1000000000
+        maxx = -1000000000
+        maxy = -1000000000
+        missing_edges = []
+        while len(to_visit):
+            next = to_visit.pop()
+            coords = node_to_coords[id(next)]
+            for idx, neighbor in next.get_idx_neighbors():
+                if id(neighbor) in node_to_coords:
+                    continue
+                ncoords = add(cube[idx], coords)
+                coords_to_node[ncoords] = neighbor
+                node_to_coords[id(neighbor)] = ncoords
+                to_visit.append(neighbor)
+                minx = min(minx, ncoords[0])
+                maxx = max(maxx, ncoords[0])
+                miny = min(miny, ncoords[1])
+                maxy = max(maxy, ncoords[1])
+            for idx, edge in next.get_missing_edges():
+                assert next.get_neighbor(idx) is None
+                missing_edges.append(add(cube[idx], coords))
+
+        print(minx, maxx, miny, maxy)
+        while len(missing_edges):
+            ncoords = missing_edges.pop()
+            if ncoords in coords_to_node:
+                continue
+            fake_node = Node('fake', range(6), ['ccccccc']*7)
+            self.__fake.append(fake_node)
+            coords_to_node[ncoords] = fake_node
+            node_to_coords[id(fake_node)] = ncoords
+            for idx, mcoord in ((i, add(ncoords, cube[i])) for i in range(6)):
+                print(ncoords, mcoord)
+                if not (mcoord[0] >= minx and mcoord[0] <= maxx
+                        and mcoord[1] >= miny and mcoord[1] <= maxy):
+                    continue
+                node = coords_to_node.get(mcoord, None)
+                if node is None:
+                    missing_edges.append(mcoord)
+                else:
+                    nidx = (idx + 3) % 6
+                    print(node, fake_node)
+                    if node.get_neighbor(nidx) is not None:
+                        x = node.get_neighbor(nidx)
+                        print(x, node_to_coords.get(id(x), None))
+                        assert False
+                    node.set_neighbor(nidx, fake_node)
+                    fake_node.set_neighbor(idx, node)
+                    if nidx not in node.get_open_idx():
+                        fake_node.clear_open_edge(nidx)
+
+        self.sanity()
+
 
     def shortest_path(self, i, j):
         heap = [(0, i)]
         costs = {}
         costs[id(i)] = 0
         checked = 0
+        last_cost = 0
         while (len(heap)):
             checked += 1
             cost, next = heapq.heappop(heap)
+            print("pulling", next)
             for idx, node in next.get_valid_neighbors():
                 if id(node) in costs:
                     continue
                 if node is j:
                     print(checked)
-                    return cost + 1
-                costs[id(node)] = cost + 1
-                heapq.heappush(heap, (cost + 1, node))
+                    return cost + node.cost()
+                costs[id(node)] = cost + node.cost()
+                print("pushing node {}".format(node))
+                heapq.heappush(heap, (cost + node.cost(), node))
+                last_cost = cost + node.cost()
         print(checked)
+        print(last_cost)
         return -1
 
     def get_exterior_nodes(self):
@@ -298,10 +380,11 @@ class ConnectedComponent(object):
         print("connected: ", connected)
         print("missing_connections: ", missing_connections)
         print("symbols: ", symbols)
+        print("fake: ", len(self.__fake))
 
         for i in range(len(ext_nodes)):
             for j in range(i + 1, len(ext_nodes)):
-                print("Shortest: ", self.shortest_path(ext_nodes[i], ext_nodes[j]))
+                print("Shortest: ", self.shortest_path(ext_nodes[j], ext_nodes[i]))
 
     def __lt__(self, other):
         return id(self) < id(other)
@@ -456,11 +539,12 @@ data = read_files()
 nodes = sorted(set([Node(*x) for x in data]))
 
 ccs = generate_connected_components(nodes)
-#print_top_n(by_size(ccs), 5)
+print_top_n(by_size(ccs), 5)
 
 top = by_size(ccs)[-1]
 print(top)
 
+top[1].fill()
 top[1].summarize()
 
 #ccs = try_rotate_merge_ccs(ccs)
