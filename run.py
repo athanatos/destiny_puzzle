@@ -2,6 +2,7 @@
 
 import csv
 import enum
+import heapq
 
 import sys
 sys.setrecursionlimit(20000)
@@ -39,11 +40,11 @@ def validate_center(x):
             return canonical
     return None
 
-def get_open_edges(x):
+def get_open_edges(x, open_func):
     if x == '' or x == "none":
         return []
-    return [
-        int(i) for i in
+    ret = [
+        open_func(int(i)) for i in
         x.strip()
         .strip(',')
         .replace('.', ',')
@@ -51,6 +52,10 @@ def get_open_edges(x):
         .replace('side ', ',')
         .replace(' ', ',')
         .split(',')]
+    if not all(map(lambda x: x >= 0 and x < 6, ret)):
+        return None
+    return ret
+    
 
 EMPTY = 'bbbbbbb'
 def null_edge(x): return x == EMPTY
@@ -58,8 +63,9 @@ def null_edge(x): return x == EMPTY
 FILES = {
 #    'initial_sheet.tsv': lambda x: x,
 #    'dumbo.tsv': lambda x: x[1:9]
-    '2020-01-18.tsv': lambda x: x[1:9],
-    '2020-01-18-2.tsv': lambda x: x[1:9],
+    #'2020-01-18.tsv': (lambda x: x[1:9], lambda x: x),
+    #'2020-01-18-2.tsv': (lambda x: x[1:9], lambda x: x - 1),
+    'raid_secrets.tsv': (lambda x: x[0:8], lambda x: x - 1),
 }
 
 def validate_edge(edge):
@@ -80,7 +86,7 @@ def validate_edges(edges):
 
 def read_files():
     ret = []
-    for f, func in FILES.items():
+    for f, (func, open_func) in FILES.items():
         with open(f) as tsvfile:
             tsvreader = csv.reader(tsvfile, delimiter='\t')
             for line in tsvreader:
@@ -100,8 +106,11 @@ def read_files():
 
                 open_sides_decoded = None
                 try:
-                    open_sides_decoded = get_open_edges(open_sides)
+                    open_sides_decoded = get_open_edges(open_sides, open_func)
                 except:
+                    continue
+                
+                if open_sides_decoded is None:
                     print("Rejected: {}, invalid open sides {}".format(line, open_sides))
                     continue
 
@@ -217,7 +226,20 @@ class Node(object):
             filter(lambda idx, edge, neighbor: neighbor is None,
                    zip(range(len(self.__edges)), self.__edges, self.__neighbors)
             )))
-                   
+
+    def get_open_idx(self):
+        return self.__open_edges
+
+    def get_ext_edges(self):
+        return list(filter(lambda idx: null_edge(self.__edges[idx]), self.get_open_idx()))
+
+    def get_valid_neighbors(self):
+        return list(filter(
+            lambda x: x[0] in self.__open_edges,
+            self.get_idx_neighbors()))
+
+    def has_symbol(self):
+        return self.symbol() != 'blank'
 
 
 class ConnectedComponent(object):
@@ -225,6 +247,61 @@ class ConnectedComponent(object):
         self.__tag = tag
         self.__nodes = nodes;
         self.sanity()
+
+    def shortest_path(self, i, j):
+        heap = [(0, i)]
+        costs = {}
+        costs[id(i)] = 0
+        checked = 0
+        while (len(heap)):
+            checked += 1
+            cost, next = heapq.heappop(heap)
+            for idx, node in next.get_valid_neighbors():
+                if id(node) in costs:
+                    continue
+                if node is j:
+                    print(checked)
+                    return cost + 1
+                costs[id(node)] = cost + 1
+                heapq.heappush(heap, (cost + 1, node))
+        print(checked)
+        return -1
+
+    def get_exterior_nodes(self):
+        ret = []
+        for node in self.__nodes:
+            ext = node.get_ext_edges()
+            if len(ext) > 0:
+                ret.append(node)
+        return ret
+
+    def summarize(self):
+        valid = [0] * 7
+        connected = [0] * 7
+        valid_open = [0] * 7
+        connected_open = [0] * 7
+        missing_connections = 0
+        symbols = 0
+        exterior_open_nodes = 0
+        for node in self.__nodes:
+            num_valid = len(list(node.get_idx_edges()))
+            num_connected = len(list(node.get_idx_neighbors()))
+            valid[num_valid] += 1
+            connected[num_connected] += 1
+            missing_connections += num_valid - num_connected
+            if node.symbol() != 'blank':
+                symbols += 1
+
+        ext_nodes = self.get_exterior_nodes()
+        print("exterior_open_nodes: ", len(self.get_exterior_nodes()))
+        print("valid: ", valid)
+        print("connected: ", connected)
+        print("missing_connections: ", missing_connections)
+        print("symbols: ", symbols)
+
+        for i in range(len(ext_nodes)):
+            for j in range(i + 1, len(ext_nodes)):
+                print("Shortest: ", self.shortest_path(ext_nodes[i], ext_nodes[j]))
 
     def __lt__(self, other):
         return id(self) < id(other)
@@ -372,14 +449,19 @@ def by_size(components):
     return sorted(((x.size(), x) for x in components))
 
 def print_top_n(bs, n):
-    list(map(print, bs))#[(x[0], [i.symbol() for i in x[1].nodes()]) for x in bs][-1 * n:]))
+    list(map(print, bs[-1 * n:]))
 
 data = read_files()
 
 nodes = sorted(set([Node(*x) for x in data]))
 
 ccs = generate_connected_components(nodes)
-print_top_n(by_size(ccs), 5)
+#print_top_n(by_size(ccs), 5)
+
+top = by_size(ccs)[-1]
+print(top)
+
+top[1].summarize()
 
 #ccs = try_rotate_merge_ccs(ccs)
 #print_top_n(by_size(ccs), 5)
