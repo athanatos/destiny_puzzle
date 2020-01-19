@@ -3,6 +3,9 @@
 import csv
 import enum
 
+import sys
+sys.setrecursionlimit(20000)
+
 SYMBOL_TO_NAME = {
     'b' : 'blank',
     't' : 'cauldron',
@@ -223,6 +226,7 @@ class ConnectedComponent(object):
     def __init__(self, tag, nodes):
         self.__tag = tag
         self.__nodes = nodes;
+        self.sanity()
 
     def __lt__(self, other):
         return id(self) < id(other)
@@ -235,6 +239,15 @@ class ConnectedComponent(object):
 
     def copy(self, tag):
         return self.rotate(tag, 0, False)
+
+    def sanity(self):
+        for node in self.__nodes:
+            for idx, neighbor in node.get_idx_neighbors():
+                if neighbor is None:
+                    continue
+                if neighbor.get_neighbor((idx + 3) % 6) is not node:
+                    print(neighbor, node, neighbor.get_neighbor((idx + 3) % 6), id(node), id(neighbor), id(neighbor.get_neighbor((idx + 3) % 6)))
+                    assert False
 
     def rotate(self, tag, rotate, reverse):
         nodemap = {}
@@ -249,11 +262,6 @@ class ConnectedComponent(object):
         #sanity
         for node in new_nodes:
             assert id(node) not in nodemap
-        for node in new_nodes:
-            for idx, neighbor in node.get_idx_neighbors():
-                if neighbor is None:
-                    continue
-                assert neighbor.get_neighbor((idx + 3) % 6) is self
         return ConnectedComponent(tag, new_nodes)
 
     def get_exterior_edges(self):
@@ -303,6 +311,16 @@ class ConnectedComponent(object):
 def generate_connected_components(node_list):
     edge_to_nodes = {}
     for node in node_list:
+        skip = False
+        for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
+            for jdx, node in edge_to_nodes.get(edge, []):
+                if idx != (jdx + 3) % 6:
+                    print("Skipping node {}, duplicate edge {}".format(node, edge))
+                    skip = True
+            
+        if skip:
+            continue
+        print("Adding node", node)
         for idx, edge in zip(range(len(node.get_edges())), node.get_edges()):
             if null_edge(edge):
                 continue
@@ -311,6 +329,8 @@ def generate_connected_components(node_list):
             edge_to_nodes[edge].append((idx, node))
 
     for edge, nodes in edge_to_nodes.items():
+        print(edge, nodes)
+        assert len(nodes) == 2
         for idx, inode in nodes:
             for jdx, jnode in nodes:
                 if inode is jnode:
@@ -319,8 +339,11 @@ def generate_connected_components(node_list):
                     print("found misaligned pair for edge {}: {}, {}".format(
                         edge, inode, jnode))
                 else:
+                    print("Linking {} and {}".format(inode, jnode))
+                    assert inode.get_neighbor(idx) is None
+                    assert jnode.get_neighbor(jdx) is None
                     inode.set_neighbor(idx, jnode)
-                    inode.set_neighbor(jdx, inode)
+                    jnode.set_neighbor(jdx, inode)
 
     tag = 0
     tags = {}
