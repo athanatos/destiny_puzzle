@@ -257,7 +257,7 @@ class Node(object):
 
     def cost(self):
         if self.is_fake():
-            return 1
+            return 1000
         elif self.is_blank():
             return 0
         else:
@@ -443,14 +443,14 @@ class ConnectedComponent(object):
                 blanks += 1
             else:
                 if blanks > 0:
-                    ret += " blanks[{}]".format(blanks)
+        #            ret += " blanks[{}]".format(blanks)
                     blanks = 0
 
             if current.is_fake():
                 fakes += 1
             else:
                 if fakes > 0:
-                    ret += " fakes[{}]".format(fakes)
+        #            ret += " fakes[{}]".format(fakes)
                     fakes = 0
 
             if current.has_symbol():
