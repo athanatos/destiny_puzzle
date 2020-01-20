@@ -383,12 +383,21 @@ class ConnectedComponent(object):
         missing_edges = []
         for node in self.__nodes:
             for idx, edge in node.get_missing_edges():
-                missing_edges.append(add(cube[idx], node_to_coords[id(node)]))
+                coords = add(cube[idx], node_to_coords[id(node)])
+                if coords in coords_to_node:
+                    neighbor = coords_to_node[coords]
+                    assert neighbor.get_neighbor((idx + 3) % 6) is None
+                    neighbor.set_neighbor((idx + 3) % 6, node)
+                    node.set_neighbor(idx, neighbor)
+                else:
+                    missing_edges.append(coords)
+
 
         minx = min((x[0][0] for x in coords_to_node.items()))
         maxx = max((x[0][0] for x in coords_to_node.items()))
         miny = min((x[0][1] for x in coords_to_node.items()))
         maxy = max((x[0][1] for x in coords_to_node.items()))
+        print(minx, maxx, miny, maxy)
 
         while len(missing_edges):
             ncoords = missing_edges.pop()
@@ -415,6 +424,7 @@ class ConnectedComponent(object):
                     if nidx not in node.get_open_idx():
                         fake_node.clear_open_edge(nidx)
 
+        print(len(coords_to_node), len(node_to_coords))
         self.sanity()
 
     def pp_path(self, i, path):
@@ -502,6 +512,7 @@ class ConnectedComponent(object):
         print("connected: ", connected)
         print("missing_connections: ", missing_connections)
         print("symbols: ", symbols)
+        print("nodes: ", len(self.__nodes))
         print("fake: ", len(self.__fake))
 
         for i in range(len(ext_nodes)):
