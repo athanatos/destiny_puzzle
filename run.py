@@ -246,8 +246,11 @@ class Node(object):
             lambda x: x[0] in self.__open_edges,
             self.get_idx_neighbors()))
 
+    def is_blank(self):
+        return self.symbol() == 'blank'
+
     def has_symbol(self):
-        return self.symbol() != 'blank' and not is_fake()
+        return not self.is_blank() and not self.is_fake()
 
     def is_fake(self):
         return self.symbol() == 'fake'
@@ -372,6 +375,7 @@ class ConnectedComponent(object):
         assert inconsistencies == 0
         assert collisions == 0
 
+        print("Eliminating ", edge_remove_list)
         for fro, idx, to in edge_remove_list:
             fro.set_neighbor(idx, None)
             to.set_neighbor((idx + 3) % 6, None)
@@ -413,26 +417,59 @@ class ConnectedComponent(object):
 
         self.sanity()
 
+    def pp_path(self, i, path):
+        current = i
+        ret = ''
+        fakes = 0
+        blanks = 0
+        symbols = 0
+        while (len(path)):
+            if current.is_blank():
+                blanks += 1
+            else:
+                if blanks > 0:
+                    ret += " blanks[{}]".format(blanks)
+                    blanks = 0
+
+            if current.is_fake():
+                fakes += 1
+            else:
+                if fakes > 0:
+                    ret += " fakes[{}]".format(fakes)
+                    fakes = 0
+
+            if current.has_symbol():
+                symbols += 1
+                ret += ' ' + current.symbol().upper()
+            current = current.get_neighbor(path[0])
+            path = path[1:]
+        assert(fakes == 0)
+        if blanks > 0:
+            ret += " blanks[{}]".format(blanks)
+            blanks = 0
+        print(symbols)
+        return ret
 
     def shortest_path(self, i, j):
-        heap = [(0, i)]
+        heap = [(0, i, ())]
         costs = {}
         costs[id(i)] = 0
         checked = 0
         last_cost = 0
         while (len(heap)):
             checked += 1
-            cost, next = heapq.heappop(heap)
+            cost, next, path = heapq.heappop(heap)
             #print("pulling", next)
             for idx, node in next.get_valid_neighbors():
+                npath = path + (idx,)
                 if id(node) in costs:
                     continue
                 if node is j:
-                    return cost + node.cost()
+                    return cost + node.cost(), npath
                 costs[id(node)] = cost + node.cost()
-                heapq.heappush(heap, (cost + node.cost(), node))
+                heapq.heappush(heap, (cost + node.cost(), node, path + (idx,)))
                 last_cost = cost + node.cost()
-        return -1
+        return -1, None
 
     def get_exterior_nodes(self):
         ret = []
@@ -469,7 +506,9 @@ class ConnectedComponent(object):
 
         for i in range(len(ext_nodes)):
             for j in range(i + 1, len(ext_nodes)):
-                print("Shortest: ", self.shortest_path(ext_nodes[j], ext_nodes[i]))
+                cost, path = self.shortest_path(ext_nodes[j], ext_nodes[i])
+                print("Shortest: ", cost) 
+                print("symbols: ", self.pp_path(ext_nodes[j], path))
 
     def __lt__(self, other):
         return id(self) < id(other)
