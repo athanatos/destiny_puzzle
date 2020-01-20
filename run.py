@@ -256,7 +256,12 @@ class Node(object):
         return self.symbol() == 'fake'
 
     def cost(self):
-        return 10000 if self.is_fake() else 1
+        if self.is_fake():
+            return 1
+        elif self.is_blank():
+            return 0
+        else:
+            return 1
 
     def clear_open_edge(self, edge):
         assert(self.is_fake())
@@ -433,7 +438,7 @@ class ConnectedComponent(object):
         fakes = 0
         blanks = 0
         symbols = 0
-        while (len(path)):
+        while (True):
             if current.is_blank():
                 blanks += 1
             else:
@@ -451,8 +456,13 @@ class ConnectedComponent(object):
             if current.has_symbol():
                 symbols += 1
                 ret += ' ' + current.symbol().upper()
+
+            if len(path) == 0:
+                break
+
             current = current.get_neighbor(path[0])
             path = path[1:]
+
         assert(fakes == 0)
         if blanks > 0:
             ret += " blanks[{}]".format(blanks)
