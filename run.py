@@ -268,39 +268,82 @@ class ConnectedComponent(object):
         self.sanity()
 
     def generate_coords(self, exclude_list):
-        print("generate_coords {}".format(exclude_list))
         def add(x, y):
             return tuple(map(sum, zip(x, y)))
         def sub(x, y):
             return tuple(map(lambda x: x[0] - x[1], zip(x, y)))
         cube = [(1, 1), (2, 0), (1, -1), (-1, -1), (-2, 0), (-1, 1)]
-        to_visit = [(0, self.__nodes[0])]
-        coords_to_node = {(0,0): self.__nodes[0]}
-        node_to_coords = {id(self.__nodes[0]): (0,0) }
-        inconsistencies = 0
+        root = self.__nodes[90]
+        to_visit = [(0, (0, 0), (), None, 0, root)]
+        coords_to_node = {}
+        node_to_coords = {}
+        node_to_path = {}
         missing_edges = []
         offsets = {}
+        coord_collisions = 0
         while len(to_visit):
-            _, next = heapq.heappop(to_visit)
-            coords = node_to_coords[id(next)]
+            _, coords, path, prev, idx, next = heapq.heappop(to_visit)
+            if id(next) in node_to_coords:
+                if node_to_coords[id(next)] != coords:
+                    offset = sub(coords, node_to_coords[id(next)])
+                    l = int(offset[0]/abs(offset[0]) if offset[0] != 0 else offset[1]/abs(offset[1]))
+                    offset = tuple([x * l for x in offset])
+                    if offset not in offsets:
+                        offsets[offset] = ([], [])
+                    offsets[offset][0 if l == 1 else 1].append((path, prev, idx, next))
+                continue
+                
+            node_to_coords[id(next)] = coords
+            node_to_path[id(next)] = path
+
+            if coords in coords_to_node:
+                coord_collisions += 1
+            coords_to_node[coords] = next
+            
             for idx, neighbor in next.get_idx_neighbors():
                 ncoords = add(cube[idx], coords)
-                if id(neighbor) in node_to_coords:
-                    if node_to_coords[id(neighbor)] != ncoords:
-                        offset = sub(ncoords, node_to_coords[id(neighbor)])
-                        if offset not in offsets:
-                            offsets[offset] = 0
-                        offsets[offset] += 1
-                        inconsistencies += 1
-                    continue
-                coords_to_node[ncoords] = neighbor
-                node_to_coords[id(neighbor)] = ncoords
-                if tuple(sorted([id(next), id(neighbor)])) in exclude_list:
-                    heapq.heappush(to_visit, (1, neighbor))
-                else:
-                    heapq.heappush(to_visit, (0, neighbor))
-        print(inconsistencies, offsets)
-        return inconsistencies, id(coords_to_node), coords_to_node, node_to_coords
+                npath = path + (idx,)
+
+                heapq.heappush(
+                    to_visit,
+                    (exclude_list.get(tuple(sorted([id(next), id(neighbor)])), 0),
+                     ncoords,
+                     npath,
+                     next,
+                     idx,
+                     neighbor))
+
+        edge_remove_list = []
+        excl_list = []
+        inconsistencies = 0
+        for offset, (l, r) in offsets.items():
+            if len(l) == 1:
+                edge_remove_list.append(l[0][1:])
+                continue
+            else:
+                inconsistencies += len(l)
+            def max_prefix(l):
+                ret = ()
+                for i in range(1, min(map(len, l))):
+                    if not all(map(lambda x: x[:i] == l[0][:i], l)):
+                        return ret
+                    ret = l[0][:i]
+                return ret
+            cand = ()
+            if len(l) == 1:
+                cand = l[0][0][:-2]
+            else:
+                lpre = max_prefix([x[0] for x in l])
+                rpre = max_prefix([x[0] for x in r])
+                cand = lpre if len(lpre) > len(rpre) else rpre
+            assert len(cand) > 1
+            current = root
+            while len(cand) > 1:
+                current = current.get_neighbor(cand[0])
+                cand = cand[1:]
+            excl_list.append(tuple(sorted([id(current), id(current.get_neighbor(cand[0]))])))
+            
+        return inconsistencies, coord_collisions, edge_remove_list, frozenset(excl_list), coords_to_node, node_to_coords
 
     def edge_list(self):
         ret = []
@@ -315,22 +358,34 @@ class ConnectedComponent(object):
             return tuple(map(sum, zip(x, y)))
         cube = [(1, 1), (2, 0), (1, -1), (-1, -1), (-2, 0), (-1, 1)]
 
-        edge_list = self.edge_list()
-        print(len(edge_list))
-        x = sorted([self.generate_coords([x]) for x in edge_list])
-        inconsistencies, _, coords_to_node, node_to_coords
+        excl_list = {}
+        inconsistencies = 10
+        collisions = 0
+        edge_remove_list = []
+        while inconsistencies:
+            inconsistencies, collisions, edge_remove_list, nexcl_list, coords_to_node, node_to_coords = self.generate_coords(excl_list)
+            for excl in nexcl_list:
+                if not excl in excl_list:
+                    excl_list[excl] = 1
+                excl_list[excl] *= 2
+            print(inconsistencies)
         assert inconsistencies == 0
+        assert collisions == 0
 
+        for fro, idx, to in edge_remove_list:
+            fro.set_neighbor(idx, None)
+            to.set_neighbor((idx + 3) % 6, None)
+
+        missing_edges = []
         for node in self.__nodes:
             for idx, edge in node.get_missing_edges():
-                missing_edges.append(add(cube[idx], coords))
+                missing_edges.append(add(cube[idx], node_to_coords[id(node)]))
 
         minx = min((x[0][0] for x in coords_to_node.items()))
         maxx = max((x[0][0] for x in coords_to_node.items()))
         miny = min((x[0][1] for x in coords_to_node.items()))
         maxy = max((x[0][1] for x in coords_to_node.items()))
 
-        print(minx, maxx, miny, maxy)
         while len(missing_edges):
             ncoords = missing_edges.pop()
             if ncoords in coords_to_node:
@@ -340,7 +395,6 @@ class ConnectedComponent(object):
             coords_to_node[ncoords] = fake_node
             node_to_coords[id(fake_node)] = ncoords
             for idx, mcoord in ((i, add(ncoords, cube[i])) for i in range(6)):
-                print(ncoords, mcoord)
                 if not (mcoord[0] >= minx and mcoord[0] <= maxx
                         and mcoord[1] >= miny and mcoord[1] <= maxy):
                     continue
@@ -349,10 +403,8 @@ class ConnectedComponent(object):
                     missing_edges.append(mcoord)
                 else:
                     nidx = (idx + 3) % 6
-                    print(node, fake_node)
                     if node.get_neighbor(nidx) is not None:
                         x = node.get_neighbor(nidx)
-                        print(x, node_to_coords.get(id(x), None))
                         assert False
                     node.set_neighbor(nidx, fake_node)
                     fake_node.set_neighbor(idx, node)
@@ -376,14 +428,10 @@ class ConnectedComponent(object):
                 if id(node) in costs:
                     continue
                 if node is j:
-                    print(checked)
                     return cost + node.cost()
                 costs[id(node)] = cost + node.cost()
-                print("pushing node {}".format(node))
                 heapq.heappush(heap, (cost + node.cost(), node))
                 last_cost = cost + node.cost()
-        print(checked)
-        print(last_cost)
         return -1
 
     def get_exterior_nodes(self):
